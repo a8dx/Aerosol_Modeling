@@ -1,0 +1,16 @@
+
+*.aux
+
+Notes/Climate_Model_Notes.log
+
+*.out
+
+Notes/Climate_Model_Notes.pdf
+
+Notes/Climate_Model_Notes.synctex.gz
+
+Notes/Climate_Modeling.txt
+
+Notes/MODAL2_M_AER_OD_2013-08-01_rgb_3600x1800.TIFF
+
+Scripts/SLP_Example.py
