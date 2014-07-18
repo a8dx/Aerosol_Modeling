@@ -100,7 +100,7 @@ def ncdump(nc_fid):
 
 
 
-def eof_standard_plot(obj, value, var, titleText):
+def eof_standard_plot(object, value, var, titleText, filename):
   """ Produces some standard plot output and therefore easier to change 
       these settings than manual work. 
       Figure out some way to default to total range for index (i.e., not just 1)
@@ -108,6 +108,7 @@ def eof_standard_plot(obj, value, var, titleText):
       var : prescribed abbreviation of climate variable of interest 
       value : when working with array, take a single value (i.e., 1st EOF)
   """
+  obj = Dataset(object, mode = 'r')
   lons = obj.variables['lon'][:]
   lats = obj.variables['lat'][:]
   cliva = obj.variables[var][value,:,:]   # climate variable
@@ -148,12 +149,14 @@ def eof_standard_plot(obj, value, var, titleText):
   plt.title(titleText)
   #plt.show()
   #plt.draw()   
-  fn = "EOF1" + str(goodFiles[0][0:-3]) + ".eps"     # hard-coding here can be improved
+  fn = str(filename) + ".eps"     # hard-coding here can be improved
   plt.savefig(fn)
   #plt.show()
   #fig.show() 
   #def ensemble_avg(modphys)
   obj.close()  # closes the file
+
+
 
 def simplePlot(obj):
   """
@@ -199,7 +202,7 @@ def genEnsemble(modelphys, plotMembersClima = False):
   for p in EHDirs:
     print p 
 
-#  count = 0   # not certain what role of this is   
+  count = 0   # not certain what role of this is   
   physDirs = [h for h in EHDirs if 'p'+str(modelphys) in h]   # only paths with specified model physics are considered 
   ensembleTotal = [] 
   for p in physDirs:
@@ -223,20 +226,26 @@ def genEnsemble(modelphys, plotMembersClima = False):
       print "Maintaining total coordinates!"
 
     ensembleTotal.append(totalCat)
- #   count += 1    # identifier for ensemble total 
+    count += 1    # identifier for ensemble total 
 
     if (plotMembersClima == True):
       ensemblePlot()
 
     print str(len(ensembleTotal)) + " length of ensemble total"  
+
+
+
+    # alt include ensAverage = cdo...
   print ensembleTotal  
+  #ensA = cdo.ensavg(input = ensembleTotal)  #, options =  '-f nc')         # ensemble average 
+  #return ensAverage 
   return ensembleTotal
 
 
 
 
 
-def monthlyPlotDeprecated(object, var, title):
+def monthlyPlot(object, var, title):
   
   # time goes 0:11
 
@@ -252,12 +261,23 @@ def monthlyPlotDeprecated(object, var, title):
   fig, axes = plt.subplots(nrows = 4, ncols = 3)
 
   count = 0    # to identify slices 
+  
+  grid = AxesGrid(fig, [0.05,0.01,0.9,0.9], # similar to subplot(132)
+                    nrows_ncols = (4, 3),
+                    axes_pad = 0.25,
+                    cbar_mode='single',
+                    label_mode = "L",
+                    cbar_location = "bottom",
+                    share_all=True
+                    )
+
+
   for ax in axes.flat:
     
     cliva = obj.variables[var][count,:,:]   # climate variable
 
     #m_ax = Basemap(ax = ax, width=5000000,height=3500000,resolution='l',projection='stere', lat_ts=40,lat_0=lat_0,lon_0=lon_0)
-    m_ax = Basemap(ax = ax, width=5000000,height=3500000, projection = 'stere', lat_ts = 40, lat_0 = lat_0, lon_0 = lon_0)
+    m_ax = Basemap(ax = ax, width=5000000,height=3500000, projection = 'ortho', lat_ts = 40, lat_0 = lat_0, lon_0 = lon_0)
 
     # Because our lon and lat variables are 1D, 
     # use meshgrid to create 2D arrays 
@@ -282,69 +302,15 @@ def monthlyPlotDeprecated(object, var, title):
     count += 1 
     #plt.show()
     #cbar.set_label(cliva_units)
- 
 
 
-  # grid = AxesGrid(fig, 132, # similar to subplot(132)
-  #                   nrows_ncols = (2, 2),
-  #                   axes_pad = 0.0,
-  #                   share_all=True,
-  #                   label_mode = "L",
-  #                   cbar_location = "top",
-  #                   cbar_mode="single",
-  #                   )
-
-  # for i in range(12):
-  #   im = grid[i].imshow(Z, extent=extent, interpolation="nearest")
-  #   #plt.colorbar(im, cax = grid.cbar_axes[0])
-  # grid.cbar_axes[0].colorbar(im)
-
-  # for cax in grid.cbar_axes:
-  #   cax.toggle_label(False)
-        
-  #   # This affects all axes as share_all = True.
-  # grid.axes_llc.set_xticks([-2, 0, 2])
-  # grid.axes_llc.set_yticks([-2, 0, 2])
-
+  cbar = fig.colorbar(cs, cax = grid.cbar_axes[0], orientation='horizontal')  
   plt.suptitle(title)
-  plt.tight_layout()
-  cax = plt.axes([0.1, 0.05, 0.8, 0.025])
-  plt.colorbar(cax=cax, orientation = 'horizontal')  
-  plt.subplots_adjust(left = 0.1, right = 0.9, top = 0.1, bottom = 0.9)
-  plt.show()   
-
-def monthlyPlot(object, var, title):
-  
-  obj = Dataset(object)
-  lons = obj.variables['lon'][:]
-  lats = obj.variables['lat'][:]
-  times = obj.variables['time'][:]
-  cliva_units = obj.variables[var].units
-  lon_0 = lons.mean()
-  lat_0 = lats.mean()
-  clevs = np.arange(-30,30.1,2.)
-  lon, lat = np.meshgrid(lons, lats)  
-  m = Basemap(width=5000000,height=3500000,projection = 'stere', lat_ts = 40, lat_0 = lat_0, lon_0 = lon_0)  #  
-  xi, yi = m(lon, lat)
-  fig=plt.figure()
-
-  for nt,time in enumerate(times):
-    ax = fig.add_subplot(4,3,1+nt)
-    cs = m.pcolor(xi,yi,np.squeeze(obj.variables[var][nt,:,:]))
-    #cs = m.contourf(xi,yi,np.squeeze(obj.variables[var][nt,:,:]),clevs,cmap=plt.cm.jet,extend='both')
-    m.drawcoastlines()
-    m.drawcountries()
-    m.drawparallels(np.arange(-80., 81., 10.), labels=[1,0,0,0], fontsize=10)
-    m.drawmeridians(np.arange(-180., 181., 10.), labels=[0,0,0,1], fontsize=10)
-
-    plt.title(calendar.month_abbr[nt+1],fontsize=9)
-
-  plt.figtext(0.5,0.95,title,horizontalalignment='center',fontsize=14)
   #plt.tight_layout()
-  cax = plt.axes([0.1, 0.05, 0.8, 0.025])
-  cbar = plt.colorbar(cax=cax, orientation='horizontal')
-  cbar.ax.set_xlabel('UNITS HERE')
+  #plt.subplots_adjust(left = 0.1, right = 0.1, top = 0.1, bottom = 0.1)
   plt.show()   
+
+
 
 def spacePlot(obj, slice, var):
   """
@@ -432,18 +398,6 @@ def spEOF(obj, number):
   eof_standard_plot(eof2, 1, varSeries, 'EOF1 for ModelPhys = 313')
 
 
-def calcSteps(object):
-  """
-  Returns the number of timesteps of `object.' '
-  For graphing purposes. 
-  Ideally should be fed into the graph to determine what the optimal dimensions are 
-  """
-  return cdo.ntime(input = object)
-
-
-
-
-
 
 # -- Initial Parameters
 phys313 = 313                     # specify which model physics to work with 
@@ -452,12 +406,10 @@ bbox = "58.75,96.25,5,41"         # bbox coordinates applied only if IndiaOnly =
 IndiaOnly = True                  # limit grid to aforementioned bbox coordinates
 showPlot = False                  # currently only for monthly climatology, but eventually to control all plot outputs
 #showEnsembleMembers
-basePath = '/Users/xadx/Desktop/Active_Research/Climate_Modeling/GISS_Downloads'
 
 
-
-yearsRange = str(range(1980,2012)).strip('[]').replace(' ','')    # convert to string without spaces between year entries
-
+#basePath = '/Users/xadx/Desktop/Active_Research/Climate_Modeling/GISS_Downloads'
+basePath = '/vega/sscc/work/users/ald2187/GISS_Downloads'
 
 # -- import cell area values 
 
@@ -466,8 +418,8 @@ yearsRange = str(range(1980,2012)).strip('[]').replace(' ','')    # convert to s
 
 
 # -- 313 physics    : 13  Long-lived GHGs (CO2, N2O, small miscellaneous gases, but not CH4) 
-ensAvg313 = cdo.ensavg(input = genEnsemble(313))
-moCli313 = cdo.ymonavg(input = ensAvg313)
+#ensAvg313 = cdo.ensavg(input = genEnsemble(313))
+#moCli313 = cdo.ymonavg(input = ensAvg313)
 
 # -- 300 physics    : 00  all forcings except aerosol indirect effects (pN00 is equivalent to pN in this experiment)
 
@@ -479,84 +431,71 @@ Configuration of models under various physics.
 """
 
 
-# -- 100 physics     : 00  all forcings except aerosol indirect effects (pN00 is equivalent to pN in this experiment)
-ensAvg100 = cdo.ensavg(input = genEnsemble(100))
-moCli100 = cdo.ymonavg(input = ensAvg100)
-deMeaned100 = cdo.ymonsub(input = " ".join([ensAvg100, cdo.ymonavg(input = ensAvg100)]), options = '-f nc')    # demeaning monthly climatology by pixel
-print "\n Successfully processed models under physics 100. \n  all forcings except aerosol indirect effects (pN00 is equivalent to pN in this experiment) \n"
+# # -- 100 physics     : 00  all forcings except aerosol indirect effects (pN00 is equivalent to pN in this experiment)
+# ensAvg100 = cdo.ensavg(input = genEnsemble(100))
+# moCli100 = cdo.ymonavg(input = ensAvg100)
+# deMeaned100 = cdo.ymonsub(input = " ".join([ensAvg100, cdo.ymonavg(input = ensAvg100)]), options = '-f nc')    # demeaning monthly climatology by pixel
+# print "\n Successfully processed models under physics 100. \n  all forcings except aerosol indirect effects (pN00 is equivalent to pN in this experiment) \n"
 
 
-# -- 106 physics    : 06  anthro tropospheric aerosol (direct effect) only (conc)
-ensAvg106 = cdo.ensavg(input = genEnsemble(106))
-moCli106 = cdo.ymonavg(input = ensAvg106)
-deMeaned106 = cdo.ymonsub(input = " ".join([ensAvg106, cdo.ymonavg(input = ensAvg106)]), options = '-f nc')    # demeaning monthly climatology by pixel
-print "\n Successfully processed models under physics 106. \n anthro tropospheric aerosol (direct effect) only (conc) \n "
+# # -- 106 physics    : 06  anthro tropospheric aerosol (direct effect) only (conc)
+# ensAvg106 = cdo.ensavg(input = genEnsemble(106))
+# moCli106 = cdo.ymonavg(input = ensAvg106)
+# deMeaned106 = cdo.ymonsub(input = " ".join([ensAvg106, cdo.ymonavg(input = ensAvg106)]), options = '-f nc')    # demeaning monthly climatology by pixel
+# print "\n Successfully processed models under physics 106. \n anthro tropospheric aerosol (direct effect) only (conc) \n "
 
-diff106 = cdo.sub(input = " ".join([ensAvg100, ensAvg106]))
-cliDiff106 = cdo.ymonavg(input = diff106)
-# summer months only 
-
-monthlyPlot(cliDiff106, "pr", "Anthro Tropospheric Aerosol Effects on Precipitation (Direct Effects Only)")
+# diff106 = cdo.sub(input = " ".join([ensAvg100, ensAvg106]))
+# cliDiff106 = cdo.ymonavg(input = diff106)
+# # summer months only 
 
 
-
-cliDiff106_part2 = cdo.ymonavg(input = "-sub" + " ".join([ensAvg100, ensAvg106]))     # to make sure it's calculating the differences appropriately
-
-
-
-diff106_1980_2012 = cdo.selyear(yearsRange, input = diff106)
-diff106JJA = cdo.selseas('JJA', input = diff106_1980_2012)
-diff106JJAsum = cdo.yearsum(input = diff106JJA)
-num = calcSteps(diff106JJAsum)   # to be used when created some lattice plot
+# spDiffCli106 = cdo.ymonavg(input = "-fldavg " + cdo.ymonavg(input = diff106))   # spatial average of 
+# x = Dataset(spDiffCli106)
+# simplePlot(x)
 
 
 
-spDiffCli106 = cdo.ymonavg(input = "-fldavg " + cdo.ymonavg(input = diff106))   # spatial average of 
-x = Dataset(spDiffCli106)
-simplePlot(x)
-
-
-
-# -- 107 physics     : 07   anthro tropospheric aerosol (direct and indirect effects) only (conc)
-#ensAvg107 = cdo.ensavg(input = genEnsemble(107))
-#moCli107 = cdo.ymonavg(input = ensAvg107)
-#deMeaned107 = cdo.ymonsub(input = " ".join([ensAvg107, cdo.ymonavg(input = ensAvg107)]), options = '-f nc')    # demeaning monthly climatology by pixel
-#print "\n Successfully processed models under physics 107. \n anthro tropospheric aerosol (direct and indirect effects) only (conc) \n"
+# # -- 107 physics     : 07   anthro tropospheric aerosol (direct and indirect effects) only (conc)
+# ensAvg107 = cdo.ensavg(input = genEnsemble(107))
+# moCli107 = cdo.ymonavg(input = ensAvg107)
+# deMeaned107 = cdo.ymonsub(input = " ".join([ensAvg107, cdo.ymonavg(input = ensAvg107)]), options = '-f nc')    # demeaning monthly climatology by pixel
+# print "\n Successfully processed models under physics 107. \n anthro tropospheric aerosol (direct and indirect effects) only (conc) \n"
 
 
 # -- 108 physics     : 08  BC on snow only
-ensAvg108 = cdo.ensavg(input = genEnsemble(108))
-moCli108 = cdo.ymonavg(input = ensAvg108)
-deMeaned108 = cdo.ymonsub(input = " ".join([ensAvg108, cdo.ymonavg(input = ensAvg108)]), options = '-f nc')    # demeaning monthly climatology by pixel
-print "\n Successfully processed models under physics 108. \n  BC on snow only.  \n "
+# ensAvg108 = cdo.ensavg(input = genEnsemble(108))
+# moCli108 = cdo.ymonavg(input = ensAvg108)
+# deMeaned108 = cdo.ymonsub(input = " ".join([ensAvg108, cdo.ymonavg(input = ensAvg108)]), options = '-f nc')    # demeaning monthly climatology by pixel
+# print "\n Successfully processed models under physics 108. \n  BC on snow only.  \n "
 
 
-def monthDiff(object1,object2):
-
-
-
-
-# -- 109 physics     : 09   All anthropogenic (WMGHG+O3+AER+AIE+BCsnow+LU)     
+# -- 109 physics     
 ensAvg109 = cdo.ensavg(input = genEnsemble(109))
 moCli109 = cdo.ymonavg(input = ensAvg109)
 deMeaned109 = cdo.ymonsub(input = " ".join([ensAvg109, cdo.ymonavg(input = ensAvg109)]), options = '-f nc')    # demeaning monthly climatology by pixel
 print "\n Successfully processed models under physics 109. \n  SPECIFY HERE  \n "
 
-
+eof_standard_plot(ensAvg109, 1, "pr", "Model Physics 109 Ensemble: Precipitation EOF1", "mp309EOF1")
 
 # -- 110 physics     : 10  anthro tropospheric aerosol (via emissions of SO2, BC, OC, NH3) 
 
 
 
 
-"""
-TASKS: come up with JJA cumulative total rainfall difference across the various models 
-"""
-
 
 # -- Aerosol only effects 
 
 # ensure common time series 
+
+
+
+
+
+
+
+
+
+
 
 
 # double check to make sure differencing is in right direction   
@@ -577,7 +516,7 @@ TASKS: come up with JJA cumulative total rainfall difference across the various 
 #files = [ensembleTotal, ensAverage]
 #g = cdo.sub(input=" ".join((ensembleTotal, ensAverage)), options = '-f nc')
 
-print "\n \n \nScript successfully completed. \n \n \n"
+print "Script successfully completed!"
 #plt.show()  
 #plt.savefig("fake_eof.png")
 
