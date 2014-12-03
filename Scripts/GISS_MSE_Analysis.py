@@ -13,11 +13,13 @@ The aerosol indirect effect is parameterized. This corresponds to the rundeck E_
 
 ########### COMMENTS ###########
 
+# modified pixel -> spatial average in both MSE (self.pixel) and in the mse plotting analysis function 
 # convert climatology function into something more flexible - which includes a time duration argument 
 # missing values in Pr series coded as 1e+20 -- need to include checks for this 
 # determine how weighting should be included in EOFs and how treated by CDOs 
 
 TASKS
+* Work on the makeBoxPlot function -- 
 * Take spatial average of each location 
 * Specify bounding box outside of the function - make it consistent across all procedures 
 
@@ -67,22 +69,28 @@ h = [1004 (J/(kg * K)) * T (K) + 2.501e6 * huss (1)]/1000
 
 # -- preamble
 
-import datetime as dt 
 import glob, os, re  
 import calendar 
 from cdo import * 
 from netCDF4 import Dataset
 import pylab as pl 
 import numpy as np
+from itertools import cycle
 import matplotlib.pyplot as plt
 from mpl_toolkits.basemap import Basemap
 from mpl_toolkits.axes_grid1 import ImageGrid
-import datetime
+from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.ticker import MultipleLocator
+from datetime import datetime 
 from dateutil.relativedelta import *
 #from GISS_MSE_Plotting import * 
 #from GISS_Analysis_Functions import *    # function helper file 
 from cdoCl import cdoClass 
 from MSE import mseClass
+import math 
+import pandas as pd
+from titlecase import titlecase
+
 
 
 
@@ -102,9 +110,6 @@ def decLinePlot(in_data, titleText, subset, calLength):
   calLength = either 360 or 365 depending on model used 
 
   """ 
-  from itertools import cycle
-  import matplotlib.pyplot as plt 
-
   x,y,z = makeContour(in_data, calLength)    
 
   # -- total number of decadal periods 
@@ -123,7 +128,9 @@ def decLinePlot(in_data, titleText, subset, calLength):
   # -- vary series markers 
   lines = ["-","--","-.",":"]
   linecycler = cycle(lines)
-  decmean = [z[:,indexes[:,i]].mean(axis=1) for i in range(indexes.shape[1])] 
+
+  # -- need range to get full interval, not just end points
+  decmean = [z[:,range(indexes[:,i][0],indexes[:,i][1])].mean(axis=1) for i in range(indexes.shape[1])] 
   plt.subplots_adjust(hspace=0.07)
 
   pnum = 1 
@@ -137,9 +144,9 @@ def decLinePlot(in_data, titleText, subset, calLength):
 
     znew[:,c] = decmean[c]
 
-    # -- labeling of correct decades 
-    year1 = int(years[0]) + indexes[0,c]
-    year2 = int(years[0]) + indexes[1,c]
+    # -- labeling of correct decades, intervals are decades  
+    year1 = int(years[0]) + indexes[0,c] -1
+    year2 = int(years[0]) + indexes[1,c] -1  
 
     print "Year 1: " + str(year1) + " Year 2: " + str(year2)
 
@@ -182,8 +189,10 @@ def decLinePlot(in_data, titleText, subset, calLength):
       f = 1   
      # ax.set_xlim(y_restrict)
 
-  #plt.tight_layout()  
-  fn = os.path.join(graphics_path, titleText[1] + "_" + titleText[3] + "_" + titleText[5] + "_Decadal_Plot.eps")
+  #plt.tight_layout() 
+  labels = [item.get_text() for item in ax.get_xticklabels()]
+
+  fn = os.path.join(graphics_path, titleText[5], titleText[1] + "_" + titleText[3] + "_" + titleText[5] + "_Decadal_Plot.eps")
   plt.savefig(fn, figsize=(8, 6), dpi = 1200, transparent = True, facecolor='w', edgecolor='k') 
   plt.close()  
   #plt.show()
@@ -242,10 +251,7 @@ def makeContour(in_data, calLength):
 
   calLength: Takes on value of 360 (e.g., HadGEM2) or 365 (e.g., GISS)
   """
-  import math 
-  from datetime import datetime 
-
-    # -- convert years into integers
+      # -- convert years into integers
   indata = Dataset(in_data)
   yearStr = cdo.showyear(input = in_data)[0].split() 
 
@@ -259,15 +265,15 @@ def makeContour(in_data, calLength):
   month_year_post = [datetime.strptime(x, '%Y-%m') for x in month_year_pre]
 
   #jan = [i.month == 1 for i in month_year]
-  dec = [i.month == 12 for i in month_year]
-  first_jan = [i.month == 1 for i in month_year].index(True)
+  dec = [i.month == 12 for i in month_year_post]
+  first_jan = [i.month == 1 for i in month_year_post].index(True)
 
   if calLength == 365:
     # GISS procedures 
     time_vals = (1461.0/1460.0)*indata.variables['time'][:]  # -- probably unnecessary 
     last_dec = [i for i, j in enumerate(day_month) if j == '12-31'][-1]   
   elif calLength == 360: 
-    # HadGEM procedures
+    # HadGEM procedures (30 day months)
     last_dec = [i for i, j in enumerate(day_month) if j == '12-30'][-1]    
 
   # -- contour data series
@@ -354,11 +360,7 @@ def multiContourPlot(location, pr_var, mse_var, ncon, scen, calLength):
 
   """ 
 
-  from mpl_toolkits.axes_grid1 import ImageGrid
-  from mpl_toolkits.axes_grid1 import make_axes_locatable
-  from matplotlib.ticker import MultipleLocator
-  import matplotlib.pyplot as plt 
-  from titlecase import titlecase
+
 
 
   #from matplotlib import rc
@@ -369,7 +371,7 @@ def multiContourPlot(location, pr_var, mse_var, ncon, scen, calLength):
   #F = plt.figure(1, (5.5, 3.5))
 
   fig, (ax1, ax2) = plt.subplots(2, sharex = True, sharey = True)
-  fig.suptitle('Contour Plots for ' + titlecase(location) + ' Under ' + str(scen), fontsize = 14)
+  fig.suptitle('Contour Plots for ' + titlecase(location) + ' Under ' + str(scen[4]), fontsize = 14)
 
  # plt.rc('text', usetex=True)
  # plt.rc('font', family='serif')
@@ -397,7 +399,7 @@ def multiContourPlot(location, pr_var, mse_var, ncon, scen, calLength):
   #fig.text(.96, 0.75, 'Precip (kg m$^2$ s$^-1$)', va = 'center', rotation = 'vertical')
   
 
-  fn = os.path.join(graphics_path, scen[3] + "_" + scen[5] + "_MSE_Pr_Contour.eps")
+  fn = os.path.join(graphics_path, scen[5], scen[3] + "_" + scen[5] + "_MSE_Pr_Contour.eps")
   plt.savefig(fn, figsize=(8, 6), dpi = 1200, transparent = True, facecolor='w', edgecolor='k') 
   #plt.tight_layout()
   plt.subplots_adjust(top=0.85)
@@ -406,18 +408,20 @@ def multiContourPlot(location, pr_var, mse_var, ncon, scen, calLength):
 
 
 
-def mse_PlottingAnalysis(path, location, scenario, calLength):
+def makeMSE(path, location, scenario, calLength):
 
   """
+  Broken out to access MSE objects without going through plotting loops 
+  10/30 used to determine how best to merge muiltiple pixels into a single analysis 
+
+  does remapnn do the same thing as taking a field average across space? 
+
   location: list object containing concluding with "_loc" which has been pre-defined
             with lat and lon values in accordance with cdo requirements for re-mapping 
-  scenario: String with experiment specifics (4x, 1%, etc.)          
+  scenario: String with experiment specifics (4x, 1%, etc.)    
 
-  ### Trouble with getting "site"_pr to execute, so caved and programmed as following 
-
+  Returns an India-subsetted precip file as well as a (India-subsetted?) MSE file
   """
-
-  from titlecase import titlecase
 
   os.chdir(path)
 
@@ -429,6 +433,24 @@ def mse_PlottingAnalysis(path, location, scenario, calLength):
   tas.analysis() 
 
   mseTotal = mseClass(tas.post, huss.post) 
+  return pr.post, mseTotal 
+
+
+
+
+
+
+def mse_PlottingAnalysis(path, location, scenario, calLength):
+
+  """
+  location: list object containing concluding with "_loc" which has been pre-defined
+            with lat and lon values in accordance with cdo requirements for re-mapping 
+  scenario: String with experiment specifics (4x, 1%, etc.)          
+
+  ### Trouble with getting "site"_pr to execute, so caved and programmed as following 
+  """
+
+  prTotal, mseTotal = makeMSE(path, location, scenario, calLength)
 
   for site in location.keys(): 
     print "Now processing " + str(site)
@@ -438,9 +460,18 @@ def mse_PlottingAnalysis(path, location, scenario, calLength):
     # -- get location values for pr and MSE 
     mseTotal.mse_pixel(location[site])
     sitename_mse = mseTotal.pixel  
-      
-    sitename_pr = cdo.remapnn(location[site], input = pr.post)
-    multiContourPlot(sitename, sitename_pr, sitename_mse, 15, ["Decadal Average ", "MSE ", "for ", titlecase(site), " Under ", str(scenario)], 360)
+     
+    lonSize = 2.5
+    latSize = 2  
+
+    # -- take larger grid box range in lieu of individual point  
+    thisLat = float(location[site].split("lat=")[1])
+    thisLon = float(location[site].split("lon=")[1].split("_lat")[0]) 
+    areaRange = str(thisLon - float(lonSize))+","+str(thisLon + float(lonSize))+","+str(thisLat - float(latSize))+","+str(thisLat + float(latSize))
+    
+    sitename_pr = cdo.fldmean(input = cdo.sellonlatbox(areaRange, input = prTotal))  
+    #sitename_pr = cdo.remapnn(location[site], input = pr.post)
+    multiContourPlot(sitename, sitename_pr, sitename_mse, 15, ["Decadal Average ", "MSE ", "for ", titlecase(site), " Under ", str(scenario)], calLength)
     decLinePlot(sitename_mse, ["Decadal Average ", "MSE ", "for ", titlecase(site), " Under ", str(scenario)], False, calLength)
     decLinePlot(sitename_pr, ["Decadal Average ",  "Precip ", "for ", titlecase(site), " Under ", str(scenario)], False, calLength)
 
@@ -470,7 +501,9 @@ Declare path locations
 
 modelPath = '/Users/xadx/Desktop/Active_Research/Climate_Modeling'
 basePath = os.path.join(modelPath, 'GISS_Downloads') 
-graphics_path = os.path.join(modelPath, "Graphics")
+
+
+graphics_path = os.path.join("/Users/xadx/Desktop/Dropbox", "MSE_Monsoon", "Area_Avg")
 
 
 # -- GISS models
@@ -483,11 +516,23 @@ giss_e2r_hist  = os.path.join(basePath, "E2-R_historical_r6i1p1_day")
 had_base = "/Users/xadx/Desktop/Active_Research/Climate_Modeling/CMIP5_Data/HadGEM2"
 had_1pct = os.path.join(had_base, "1pctCO2", "HadGEM2-ES_1pctCO2_r1i1p1_day")
 had_4x = os.path.join(had_base, "abrupt4xCO2", "HadGEM2-ES.abrupt4xCO2.day.atmos.day.r1i1p1.v20130214")
-rcphad_rcp85 = os.path.join(had_base, "rcp85", "HadGEM2-ES_rcp85_r")    # -- we have 4 model runs for the rcp85 experiment 
 
-# -- have to work on this one!  
-# rcp85_dict = {'run1':[rcp85had_rcp]}
 
+hadrcp_dict = {} 
+# -- multiple rcp 8.5 runs 
+had_rcp85 = dict() 
+for x in range(1, 5):
+  print str(x)
+  had_rcp85[x] = os.path.join(had_base, "rcp85", "HadGEM2-ES_rcp85_r" + str(x) + "i1p1")
+  hadrcp_dict['had_rcp85'+str(x)]= [had_rcp85[x], "RCP 8.5 (HadGEM2) Run " + str(x)]
+
+hadexp_dict = {'had1pct':[had_1pct, "1% CO2 (HadGEM2)"], 
+      'had4x':[had_4x, "Abrupt 4x CO2 (HadGEM2)"]}
+
+gissexp_dict = {'giss4x':[giss_4x, "Abrupt 4x CO2 (GISS)"], 
+      'gissRCP85':[giss_rcp85, "RCP 8.5 (GISS)"],
+      'e2hhist':[giss_e2h_hist, "Historical (GISS E2-H)"],
+      'e2rhist':[giss_e2r_hist, "Historical (GISS E2-R)"]}
 
 
 # -- coordinates of interest
@@ -495,72 +540,330 @@ mumbai_loc = "lon=73.01_lat=19.03"
 nagpur_loc = "lon=79.0882_lat=21.1458"
 kolkata_loc = "lon=88.3630400_lat=22.5626300" 
 
-
-# -- location and experiment dictionaries 
 location_dict = {'mumbai':mumbai_loc, 
       'nagpur':nagpur_loc,
       'kolkata':kolkata_loc}
 
-hadexp_dict = {'1pct':[had_1pct, "1% CO2 (HadGEM2)"], 
-      '4x':[had_4x, "Abrupt 4x CO2 (HadGEM2)"]}
 
-gissexp_dict = {'4x':[giss_4x, "Abrupt 4x CO2 (GISS)"], 
-      'RCP85':[giss_rcp85, "RCP 8.5 (GISS)"],
-      'e2hhist':[giss_e2h_hist, "Historical (GISS E2-H)"],
-      'e2rhist':[giss_e2r_hist, "Historical (GISS E2-R)"]}
+
+
+# -- at current moment am not distinguishing between grid box sizes of GISS v. Hadley models 
+
+
+"""
+# -- generate coordinate inputs for a spatial average over a geographic subset 
+location_sellon_dict = {} 
+
+for j in location_dict.keys(): 
+  thisLat = float(location_dict[j].split("lat=")[1])
+  thisLon = float(location_dict[j].split("lon=")[1].split("_lat")[0]) 
+  thisLatRange = [thisLat - float(latSize), thisLat + float(latSize)]
+  thisLonRange = [thisLon - float(lonSize), thisLon + float(lonSize)]
+  location_sellon_dict[j] = str(thisLon - float(lonSize))+","+str(thisLon + float(lonSize))+","+str(thisLat - float(latSize))+","+str(thisLat + float(latSize))
+ # coords = thisLonRange, thisLatRange
+
+
+
+#kolkata_avg = cdo.fldavg(input = cdo.sellonlatbox(location_sellon_dict['kolkata'], input = "/var/folders/tl/3sdxh9rj0zd88dbwzj8bfjgc0000gn/T/cdoPyF7eRpd"))
+
+"""
 
 
 
 """
-Generate MSE values 
 
-mseTotal = mseClass(tas.post, huss.post) 
-#  mseTotal.mse_barplot(mumbai_loc, 2908, "Mumbai 2908 4xCO2 Daily MSE")
-# mseTotal.mse_barplot(nagpur_loc, 2982, "Nagpur 2982 4xCO2 Daily MSE")
+To select the region with the longitudes from 120E to 90W and latitudes from 20N to 20S from all
+input elds use:
 
-mseTotal.mse_scatterplot(nagpur_loc, (2982,2990), "Nagpur 2982-2990 " + scen + " Daily MSE")
-
-mseTotal.mse_pixel(nagpur_loc)
-mseTotal.mse_time_subset(nagpur_loc, (1850, 1900))
-
-# -- would typically just use pixel nameclass, but
-# -- because temporal subset, using time_subset instead 
-# nagpur_mse = mseTotal.pixel
-
-nagpur_mse = mseTotal.time_subset 
-
-yRange = "1850,1851,1852,1853,1854,1855,1856,1857,1858,1859,1860,1861,1862,1863,1864,1865,1866,1867,1868,1869,1870,1871,1872,1873,1874,1875,1876,1877,1878,1879,1880,1881,1882,1883,1884,1885,1886,1887,1888,1889,1890,1891,1892,1893,1894,1895,1896,1897,1898,1899,1900"
-# quick copy and paste job to get it done 
-nagpur_pr = cdo.selyear(yRange, input = cdo.remapnn(nagpur_loc, input = pr.post))
-
-
-mseTotal.mse_pixel(mumbai_loc)
-# mseTotal.mse_time_subset(mumbai_loc, (1850, 1900))
-
-mumbai_mse = mseTotal.pixel 
-# mumbai_mse = mseTotal.time_subset 
-# mumbai_pr = cdo.selyear(yRange, input = cdo.remapnn(mumbai_loc, input = pr.post))
-
-multiContourPlot("nagpur", "pr", "mse", " Precipitation Under "," MSE Under ", scen)
-multiContourPlot("mumbai", "pr", "mse", " Precipitation Under "," MSE Under ", scen)
+cdo sellonlatbox,120,-90,20,-20 ifile ofile
 
 """
+
+
+# -- location and experiment dictionaries 
+
+
+hadcombined_dict = dict(hadexp_dict.items() + hadrcp_dict.items())
+
+# -- ensure that all directories for figures exist, else create 
+z = dict(hadcombined_dict.items() + gissexp_dict.items())
+for i in z: 
+  exp_path = os.path.join(graphics_path,z[i][1])
+  if not os.path.exists(exp_path):
+    os.makedirs(exp_path)
+
 
 
 # -- each experiment-location pair for Hadley models
-for exp in hadexp_dict.keys():
-  mse_PlottingAnalysis(hadexp_dict[exp][0], location_dict, hadexp_dict[exp][1], 360)
+for exp in hadcombined_dict.keys():
+  mse_PlottingAnalysis(hadcombined_dict[exp][0], location_dict, hadcombined_dict[exp][1], 360)
+
 
 # -- each experiment-location pair for GISS models 
 for exp in gissexp_dict.keys():
   mse_PlottingAnalysis(gissexp_dict[exp][0], location_dict, gissexp_dict[exp][1], 365)
 
 
-# -- for each of the RCP8.5 experiments 
-# -- ENSEMBLE AVERAGE?? 
-for i in range(0,5):
-  i_rcp85 = os.path.join(had_rcp85, i, "i1p1")
-  mse_PlottingAnalysis(i_rcp85, location_dict, "RCP 8.5 (HadGEM2) Run " + str(i), 360) 
+
+
+
+
+
+# -- built as sample set to construct boxplot from 
+prKolkata, mseKolkata = makeMSE(gissexp_dict['giss4x'][0], location_dict, gissexp_dict['giss4x'][1], 365)
+
+
+
+df1 = pd.DataFrame(pctile, columns = ['Cume Rainfall'])
+df1['DOY'] = range(364)
+df1.plot(kind = 'scatter', x = 'Cume Rainfall', y = 'DOY')
+
+
+
+# -- convert labels to months if either 360 or 365 day calendar : include if statement in there
+months = [calendar.month_name[i] for i in range(1,13)]
+
+
+
+
+
+# -- follow this procedure for editing labels to month values 
+fig, ax = plt.subplots()
+fig.canvas.draw() 
+a=ax.get_xticks().tolist()
+anew = [int(i*100+1) for i in a] 
+adate = [datetime.strptime(str(x), '%j').strftime('%B %d') for x in anew]
+ax.set_xticklabels(adate)
+plt.show() 
+
+
+# -- modify label markings to get month value 
+datetime.strptime(x, '%j').strftime('%B %d')
+
+
+range(1,13)
+firstDay = [str(x)+"/"+str(1) for x in range(1,13)]
+doyVals = [int(datetime.strptime(x, '%m/%d').strftime('%j')) for x in firstDay]
+monthVals = [datetime.strptime(x, '%m/%d').strftime('%B') for x in firstDay] 
+
+
+
+prKOLK = cdo.remapnn(kolkata_loc, input = prKolkata)
+
+
+def makeBoxPlot(pr_series, Years, ylevel):
+  # -- currently based on a single year, will have to develop it around 
+  # -- taking decadal average
+  # years: a list of (potentially) multiple year values 
+  # returns a boxplot object that will be included inside an MSE plot
+  # pr_series: CDO object of precipitation -- not making similar plots for any other series at the current moment   
+  # ylevel: manual input to fix boxplot inside another plot 
+  # currently setup as developing boxplot for single year -- will need to be modified in the future 
+
+  pr_nc = Dataset(pr_series)
+  precip = pr_nc.variables['pr'][:]
+  #prK_time = cdo.showdate(input = pr_series)[0].split()
+  pr_time = [datetime.strptime(x, '%Y-%m-%d') for x in cdo.showdate(input = pr_series)[0].split()]
+
+  ct = 0 
+  for y in Years:
+    # -- index values corresponding to beginning and end of calendar year 
+    first_val = [i.year == y for i in pr_time].index(True)
+    last_val = [i for i, j in enumerate(pr_time) if j.year == y][-1] 
+
+    # single year in vector format 
+    thisYear = np.squeeze(precip[first_val:last_val])
+
+    # -- statistics on annual total 
+    total = sum(thisYear)
+    pctile = np.cumsum(thisYear)/total 
+
+    # -- creating boxplot from these parameters
+    pct_val = [0.05, 0.25, 0.5, 0.75, 0.95]
+    pct_val_dict = {}
+
+    box_wider_big = np.array([-1,1,1,-1,-1])
+    box_wider_sm = np.array([-1,1])
+
+    for j in pct_val: 
+      pct = [i > j for i in pctile]
+      pct_val_dict[j] =  [l == True for l in pct].index(True)   
+
+    # -- compute and plot specifics of the year's distribution   
+    Mean=pct_val_dict[0.5]#mean
+    IQR=[pct_val_dict[0.25],pct_val_dict[0.75]] #inter quantile range
+    CL=[pct_val_dict[0.05],pct_val_dict[0.95]] #confidence limit
+    A=np.random.random(50)
+    D=plt.boxplot(A, vert = False) # a simple case with just one variable to boxplot
+    D['medians'][0].set_xdata(pct_val_dict[0.5])
+    # medians is 2x2
+    D['medians'][0]._xy[:,1]=ylevel[ct]+box_wider_sm
+   # D['medians']
+   # boxes is 5rowx2
+    D['boxes'][0]._xy[[0,1,4],0]=IQR[0]
+    D['boxes'][0]._xy[[2,3],0]=IQR[1]
+    D['boxes'][0]._xy[:,1]=ylevel[ct]+box_wider_big
+    print D['boxes'][0]._xy 
+    # whiskers is 2x2
+    D['whiskers'][0].set_xdata(np.array([IQR[0], CL[0]]))
+    D['whiskers'][0]._xy[:,1]=ylevel[ct]
+    D['whiskers'][1].set_xdata(np.array([IQR[1], CL[1]]))
+    D['whiskers'][1]._xy[:,1]=ylevel[ct]
+    print D['whiskers'][0]
+    # caps is 2x2
+    D['caps'][0].set_xdata(np.array([CL[0], CL[0]]))
+    D['caps'][0]._xy[:,1]=ylevel[ct]+box_wider_sm
+    D['caps'][1].set_xdata(np.array([CL[1], CL[1]]))
+    D['caps'][1]._xy[:,1]=ylevel[ct]+box_wider_sm
+
+
+
+
+    # -- add text of years to plot 
+    plt.text(pct_val_dict[0.5]-5,ylevel[ct]-2, str(y)+"-"+str(y+10), fontsize = 16)
+
+    ct += 1 # counter for identifying where the box plot should be vertically placed 
+    _=plt.xlim(np.array(CL)+[-0.1*np.ptp(CL), 0.1*np.ptp(CL)]) #reset the limit
+  
+  # -- modify x-axis labels 
+  middleOfMonth = [str(x)+"/"+str(15) for x in range(1,13)]
+  doyVals = [int(datetime.strptime(x, '%m/%d').strftime('%j')) for x in middleOfMonth]
+  monthVals = [datetime.strptime(x, '%m/%d').strftime('%B %d') for x in middleOfMonth] 
+
+  plt.xticks(doyVals, monthVals)
+  _=plt.xlim(np.array(CL)+[-0.1*np.ptp(CL), 0.1*np.ptp(CL)]) #reset the limit
+  _=plt.ylim(min(ylevel)-2.5, max(ylevel)+2.25)
+  return D 
+
+
+kol_bp = makeBoxPlot(prKOLK, [2900, 2960], [330,320])
+plt.show() 
+
+
+
+
+
+
+def decLinePlotwBox(in_data, titleText, subset, calLength, pr_data, pr_year, verticalShift):
+  """
+
+  'indata' is a single series in a CDO format, - either from a single pixel
+            or spatial average of multiple pixels  
+  either from a zonal average or individual location 
+  'titleText' is a character string that labels plot title 
+  calLength = either 360 or 365 depending on model used 
+
+  pr_data is the precip series that corresponds to the series from which the MSE data is constructed
+  pr_year is the individual year from which the boxplot gets constructed
+  """ 
+  x,y,z = makeContour(in_data, calLength)    
+
+  # -- total number of decadal periods 
+  it = math.floor(z.shape[1]/10)
+  indexes = np.array([range(int(it)), range(1,1+int(it))])*10
+
+  max_series = 5   # -- how many series per plot
+  num_plot = int(math.floor((indexes.shape[1]-1)/max_series) + 1) 
+
+  # -- initialize output array 
+  znew = np.zeros((z.shape[0], int(it)))
+
+  # -- years are extracted from 'y' 
+  years = x[0,:]
+
+  # -- vary series markers 
+  lines = ["-","--","-.",":"]
+  linecycler = cycle(lines)
+
+  # -- need range to get full interval, not just end points
+  decmean = [z[:,range(indexes[:,i][0],indexes[:,i][1])].mean(axis=1) for i in range(indexes.shape[1])] 
+  plt.subplots_adjust(hspace=0.07)
+
+  pnum = 1 
+  f = 1 
+  x_pr_restrict = [150,275]  # portion kept in final plots 
+  x_restrict = [0,calLength]
+
+  # -- take average across individual decades, and label accordingly 
+  for c in range(indexes.shape[1]):
+    print "Now processing " + str(c) + " of the decadal mean."
+
+    znew[:,c] = decmean[c]
+
+    # -- labeling of correct decades, intervals are decades  
+    year1 = int(years[0]) + indexes[0,c] -1
+    year2 = int(years[0]) + indexes[1,c] -1  
+
+    print "Year 1: " + str(year1) + " Year 2: " + str(year2)
+
+    ax = plt.subplot(num_plot, 1, pnum)
+    box = ax.get_position()
+
+    if pnum == 1:
+      ax.set_title(''.join(titleText))
+
+    # -- indexing y is necessary to avoid overplotting, since it's a wide array
+    ax.plot(y[:,c], znew[:,c], next(linecycler), label = str(year1)+"-"+str(year2)) 
+    #ax.plot(y[:,c], znew[:,c], label = str(year1)+"-"+str(year2))
+
+    if f < max_series and c < range(indexes.shape[1])[-1]: 
+      f = f+1
+    elif f < max_series and c == range(indexes.shape[1])[-1]:    
+      #ax.legend() 
+
+      #box = ax.get_position()
+      ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+      # Put a legend to the right of the current axis
+      ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+
+      #ax.legend(shadow=True, fancybox=True)  
+      #ax.legend(bbox_to_anchor=(.95, 1.0), loc=2)  
+     # plt.ylim(ymin=0)
+      ax.set_xlim(x_restrict)
+     # ax.set_xlim(y_restrict)
+    #  ax.set_ylim([ymin,ymax])
+    elif f == max_series:  
+      ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])  # Shrink current axis by 20%
+      ax.legend(loc='center left', bbox_to_anchor=(1, 0.5), fancybox = True) # Put a legend to the right of the current axis
+      #ax.legend(shadow=True, fancybox=True)  
+      ax.set_xlim(x_restrict)
+    #  plt.ylim(ymin=0) 
+      plt.tick_params(axis='x', which='both', bottom='off', labelbottom = 'off') 
+      #ax1.legend(shadow=True, fancybox=True, loc =2)
+    #  ax1.legend(bbox_to_anchor=(1.05, 1), loc=2)
+      pnum += 1 
+      f = 1   
+     # ax.set_xlim(y_restrict)
+
+  makeBoxPlot(pr_data, pr_year, verticalShift)   
+  #plt.tight_layout()  
+  fn = os.path.join(graphics_path, titleText[5], titleText[1] + "_" + titleText[3] + "_" + titleText[5] + "_Decadal_Plot.eps")
+  plt.savefig(fn, figsize=(8, 6), dpi = 1200, transparent = True, facecolor='w', edgecolor='k') 
+  plt.close()  
+  #plt.show()
+
+
+### TESTING CODE ABOVE 
+
+
+# first get a single location, experiment
+rcp85PR, rcp85MSE = makeMSE(giss_rcp85, mumbai_loc, "RCP 8.5 (GISS)", 365)
+# then get the single remappedNN series 
+rcp85PR_mumbai = cdo.remapnn(mumbai_loc, input = rcp85PR)
+rcp85MSE_mumbai = cdo.remapnn(mumbai_loc, input = rcp85MSE)
+
+rcp85MSE.mse_pixel(mumbai_loc)
+
+# find 
+
+
+makeBoxPlot(rcp85PR_mumbai, 2015, 330)
+decLinePlotwBox(rcp85MSE.pixel, ["Decadal Average ",  "MSE ", "for ", "Mumbai", " Under ", "RCP 8.5"], False, 365, rcp85PR_mumbai, 2015, 330)
+
+
+
+
+
 
 
 

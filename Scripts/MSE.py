@@ -6,6 +6,7 @@ import glob
 from cdo import * 
 import numpy as np
 import matplotlib.pyplot as plt
+import sys
 
 cdo = Cdo()
 
@@ -20,6 +21,13 @@ class mseClass:
     print "\n Calculating MSE for the given dataset \n"
     cpT = cdo.mulc(1004, input = self.tas)
     Lvq = cdo.mulc(2.5e6, input = self.huss)
+
+    tasDate = cdo.showdate(input = self.tas)
+    hussDate = cdo.showdate(input = self.huss)
+
+    if tasDate != hussDate:
+      sys.exit("Warning: Script terminated because dates for tas and huss do not match!")          
+
     h = cdo.add(input = " ".join([cpT,Lvq]))  # MSE
     self.mse = cdo.divc(1004, input = h)
 
@@ -91,7 +99,16 @@ class mseClass:
   def mse_pixel(self, location):
     self.calcMSE() 
     self.location = location 
-    self.pixel = cdo.remapnn(str(self.location), input = self.mse)
+
+    lonSize = 2.5
+    latSize = 2 
+
+    thisLat = float(self.location.split("lat=")[1])
+    thisLon = float(self.location.split("lon=")[1].split("_lat")[0]) 
+    areaRange = str(thisLon - float(lonSize))+","+str(thisLon + float(lonSize))+","+str(thisLat - float(latSize))+","+str(thisLat + float(latSize))
+    
+    self.pixel = cdo.fldmean(input = cdo.sellonlatbox(areaRange, input = self.mse)) 
+    #self.pixel = cdo.remapnn(str(self.location), input = self.mse)
 
 
   def mse_time_subset(self, location, years):
