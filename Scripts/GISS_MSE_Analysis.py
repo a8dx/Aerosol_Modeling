@@ -83,15 +83,13 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.ticker import MultipleLocator
 from datetime import datetime 
 from dateutil.relativedelta import *
-#from GISS_MSE_Plotting import * 
+from GISS_MSE_Plotting import * 
 #from GISS_Analysis_Functions import *    # function helper file 
 from cdoCl import cdoClass 
 from MSE import mseClass
 import math 
 import pandas as pd
 from titlecase import titlecase
-
-
 
 
 cdo = Cdo()
@@ -295,51 +293,6 @@ def makeContour(in_data, calLength):
 
 
 
-"""
-makeContour plot repeated if something breaks 
-
-
-import math  
-
-  # -- convert years into integers
-indata = Dataset(in_data)
-yearStr = cdo.showyear(input = in_data)[0].split() 
-
-true_time = cdo.showdate(input = in_data)[0].split() 
-
-yearRange = [int(i) for i in yearStr]
-time_vals = (1461.0/1460.0)*indata.variables['time'][:]
-time_dateFormat = [relativedelta(years = int(yearRange[0]) - 1) + datetime.date.fromordinal(int(round(i))) for i in time_vals]   # convert into date-time format 
-# labels = [i.strftime("%B")[:3] + "-" + i.strftime("%d") for i in time_dateFormat]
-labels = [i.isoformat() for i in time_dateFormat] 
-
-# -- ensure only full calendar years are included 
-n_yr = math.floor(len(time_vals)/ 365)
-fullyr_vals = n_yr * 365 
-
-# -- done to ensure the calculations are correct
-time_rev = time_vals[0:fullyr_vals]
-print "Given number of observations is " + str(len(time_vals)) + " , but concatenating to first " + str(len(time_rev)) + " observations."
-
-# -- contour data series
-z = indata.variables[cdo.showname(input = in_data)[0]][:][0:fullyr_vals]
-zf = z.squeeze().reshape(len(time_rev)/len(yearRange),len(yearRange), order = 'F')
-
-
-y = time_rev.reshape(len(yearRange), len(time_rev)/len(yearRange))
-dayRange = y[0,:]
-X,Y = np.meshgrid(yearRange, dayRange)
-
-day_dateFormat = [relativedelta(years = int(yearRange[0]) - 1) + datetime.date.fromordinal(int(round(i))) for i in dayRange]
-#  dayLabels = [i.strftime("%B")[:3] + "-" + i.strftime("%d") for i in day_dateFormat]
-dayLabels = [j.isoformat() for j in day_dateFormat] 
-
-
-return X,Y,zf 
-
-"""
-
-
 
 def multiContourPlot(location, pr_var, mse_var, ncon, scen, calLength):
   """
@@ -437,6 +390,266 @@ def makeMSE(path, location, scenario, calLength):
 
 
 
+def mseDiff(in_data):
+  return in_data
+
+
+
+
+def makeLab(yearVar, index):
+  # index: which sub-array to pick year values from 
+  return str(yearVar[index][0])+"-"+str(yearVar[index][-1])
+
+
+
+def bidecadeGen(in_data, calLength, subtractSummer):
+  """
+  Given a cdo-type data file, creates a bidecadal (20 year) average with the option to subtract the July-Average mean value 
+  """
+  x,y,z = makeContour(in_data, calLength)
+  years = x[0,:]
+  # -- identify where in the dataset the JA months span 
+  #     using the second year arbitrarily 
+  # -- because of Hadley, can't use standard strptime procedure (30 days in Feb.)
+  #series_time = [datetime.strptime(x, '%Y-%m') for x in cdo.showdate(input = in_data)[0].split()]
+  month_year_pre = [i[0:7] for i in cdo.showdate(input = in_data)[0].split()]
+  strp_month = [datetime.strptime(x, '%Y-%m') for x in month_year_pre]
+  first_july = [i.month == 7 for i in strp_month if i.year == years[1]].index(True)
+
+  # -- follow same approach, one day before September 
+  last_aug = [i.month == 9 for i in strp_month if i.year == years[1]].index(True) -1 
+
+  summer = range(first_july, last_aug)
+  first_span = range(0,20)
+  second_span = range(len(years)-20,len(years))
+
+  years_range = [years[first_span], years[second_span]]
+
+  z1 = z[:,first_span].mean(axis = 1)
+  z1_summer = z1[summer].mean(axis = 0) 
+  z2 = z[:,second_span].mean(axis=1)
+  z2_summer = z2[summer].mean(axis = 0)
+
+  if subtractSummer == True:
+    z1 = z1-z1_summer
+    z2 = z2-z2_summer 
+
+  return z1, z2, years_range   
+
+
+
+
+
+
+
+
+
+
+
+def dec2LinePlotwBox(mse_data, rf_data, titleText, calLength, subtractSummer, windowLength):
+  """
+
+  'indata' is a single series in a CDO format, - either from a single pixel
+            or spatial average of multiple pixels  
+  either from a zonal average or individual location 
+  'titleText' is a character string that labels plot title 
+  calLength = either 360 or 365 depending on model used 
+
+
+  Restricts analysis to just 2 decades at the beginning and 2 at the end 
+  """ 
+
+  # -- compute average of first 20 years, last 20 years, and return the year ranges for labeling 
+  # -- and further computing with rainfall data 
+  zfirst, zsecond, years = bidecadeGen(mse_data, calLength, subtractSummer = True)
+
+  # -- labels for line plots 
+  lab1 = makeLab(years_range[0], 0)
+  lab2 = makeLab(years_range[1], 1)
+
+  z1_smooth = smooth(z1, windowLength)[0:len(z1)]
+  z2_smooth = smooth(z2, windowLength)[0:len(z2)]
+
+  # -- vary series markers 
+  lines = ["-","--","-.",":"]
+  linecycler = cycle(lines)
+
+  fig, ax  = plt.subplots() 
+  #box = ax.get_position()
+
+  x_pr_restrict = [150,275]  # portion kept in final plots 
+  x_restrict = [0,calLength]
+
+  #ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+
+  #ax.plot(y[:,0], z1, next(linecycler), label = lab1)
+  #ax.plot(y[:,0], z2, next(linecycler), label = lab2)
+  ax.plot(y[:,0], z1_smooth, label = lab1)
+  ax.plot(y[:,0], z2_smooth, label = lab2)
+
+  ax.set_title(''.join(titleText))
+
+  #ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+  ax.legend(loc = 'upper left')
+  labels = [item.get_text() for item in ax.get_xticklabels()]
+
+
+  # -- modify x-axis labels 
+  middleOfMonth = [str(x)+"/"+str(15) for x in range(1,13)]
+  doyVals = [int(datetime.strptime(x, '%m/%d').strftime('%j')) for x in middleOfMonth]
+  monthVals = [datetime.strptime(x, '%m/%d').strftime('%B %d') for x in middleOfMonth] 
+  plt.xticks(doyVals, monthVals)
+
+
+  fn = os.path.join(graphics_path, titleText[5], titleText[1] + "_" + titleText[3] + "_" + titleText[5] + "_BiDecadal_Plot.eps")
+  plt.savefig(fn, figsize=(8, 8), dpi = 600, transparent = True, facecolor='w', edgecolor='k') 
+  plt.close()  
+  #plt.show()
+
+
+"""
+
+def dec2LinePlot(in_data, titleText, calLength, subtractSummer, windowLength):
+
+
+  'indata' is a single series in a CDO format, - either from a single pixel
+            or spatial average of multiple pixels  
+  either from a zonal average or individual location 
+  'titleText' is a character string that labels plot title 
+  calLength = either 360 or 365 depending on model used 
+
+
+  Restricts analysis to just 2 decades at the beginning and 2 at the end 
+
+  x,y,z = makeContour(in_data, calLength)    
+
+    # -- initialize output array, 2 bidecadal averages  
+  znew = np.zeros((z.shape[0], 2))
+
+  # -- years are extracted from 'y' 
+  years = x[0,:]
+
+
+  # -- identify where in the dataset the JA months span 
+  #     using the second year arbitrarily 
+  # -- because of Hadley, can't use standard strptime procedure (30 days in Feb.)
+  #series_time = [datetime.strptime(x, '%Y-%m') for x in cdo.showdate(input = in_data)[0].split()]
+  month_year_pre = [i[0:7] for i in cdo.showdate(input = in_data)[0].split()]
+  strp_month = [datetime.strptime(x, '%Y-%m') for x in month_year_pre]
+  first_july = [i.month == 7 for i in strp_month if i.year == years[1]].index(True)
+
+  # -- follow same approach, one day before September 
+  last_aug = [i.month == 9 for i in strp_month if i.year == years[1]].index(True) -1 
+
+
+  summer = range(first_july, last_aug)
+  first_span = range(0,20)
+  second_span = range(len(years)-20,len(years))
+
+  years_range = [years[first_span], years[second_span]]
+
+  z1 = z[:,first_span].mean(axis = 1)
+  z1_summer = z1[summer].mean(axis = 0) 
+  z2 = z[:,second_span].mean(axis=1)
+  z2_summer = z2[summer].mean(axis = 0)
+
+
+  if subtractSummer == True:
+    z1 = z1-z1_summer
+    z2 = z2-z2_summer 
+
+  # -- labels for line plots 
+  lab1 = makeLab(years_range, 0)
+  lab2 = makeLab(years_range, 1)
+
+  z1_smooth = smooth(z1, windowLength)[0:len(z1)]
+  z2_smooth = smooth(z2, windowLength)[0:len(z2)]
+
+  # -- vary series markers 
+  lines = ["-","--","-.",":"]
+  linecycler = cycle(lines)
+
+  fig, ax  = plt.subplots() 
+  #box = ax.get_position()
+
+  x_pr_restrict = [150,275]  # portion kept in final plots 
+  x_restrict = [0,calLength]
+
+  #ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+
+  #ax.plot(y[:,0], z1, next(linecycler), label = lab1)
+  #ax.plot(y[:,0], z2, next(linecycler), label = lab2)
+  ax.plot(y[:,0], z1_smooth, label = lab1)
+  ax.plot(y[:,0], z2_smooth, label = lab2)
+
+  ax.set_title(''.join(titleText))
+
+  #ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+  ax.legend(loc = 'upper left')
+  labels = [item.get_text() for item in ax.get_xticklabels()]
+
+  fn = os.path.join(graphics_path, titleText[5], titleText[1] + "_" + titleText[3] + "_" + titleText[5] + "_BiDecadal_Plot.eps")
+  plt.savefig(fn, figsize=(8, 8), dpi = 600, transparent = True, facecolor='w', edgecolor='k') 
+  plt.close()  
+  #plt.show()
+
+"""
+ 
+def smooth(x,window_len,window='hanning'):
+    """smooth the data using a window with requested size.
+    
+    This method is based on the convolution of a scaled window with the signal.
+    The signal is prepared by introducing reflected copies of the signal 
+    (with the window size) in both ends so that transient parts are minimized
+    in the begining and end part of the output signal.
+    
+    input:
+        x: the input signal 
+        window_len: the dimension of the smoothing window; should be an odd integer
+        window: the type of window from 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'
+            flat window will produce a moving average smoothing.
+
+    output:
+        the smoothed signal
+        
+    example:
+
+    t=linspace(-2,2,0.1)
+    x=sin(t)+randn(len(t))*0.1
+    y=smooth(x)
+    
+    see also: 
+    
+    numpy.hanning, numpy.hamming, numpy.bartlett, numpy.blackman, numpy.convolve
+    scipy.signal.lfilter
+ 
+    TODO: the window parameter could be the window itself if an array instead of a string
+    NOTE: length(output) != length(input), to correct this: return y[(window_len/2-1):-(window_len/2)] instead of just y.
+    """
+
+    if x.ndim != 1:
+        raise ValueError, "smooth only accepts 1 dimension arrays."
+
+    if x.size < window_len:
+        raise ValueError, "Input vector needs to be bigger than window size."
+    if window_len<3:
+        return x
+
+    if not window in ['flat', 'hanning', 'hamming', 'bartlett', 'blackman']:
+        raise ValueError, "Window is on of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'"
+
+    s=np.r_[x[window_len-1:0:-1],x,x[-1:-window_len:-1]]
+    #print(len(s))
+    if window == 'flat': #moving average
+        w=np.ones(window_len,'d')
+    else:
+        w=eval('np.'+window+'(window_len)')
+
+    y=np.convolve(w/w.sum(),s,mode='valid')
+    
+    return y[(window_len/2-1):-(window_len/2)]
+
+
 
 
 
@@ -471,11 +684,11 @@ def mse_PlottingAnalysis(path, location, scenario, calLength):
     
     sitename_pr = cdo.fldmean(input = cdo.sellonlatbox(areaRange, input = prTotal))  
     #sitename_pr = cdo.remapnn(location[site], input = pr.post)
-    multiContourPlot(sitename, sitename_pr, sitename_mse, 15, ["Decadal Average ", "MSE ", "for ", titlecase(site), " Under ", str(scenario)], calLength)
-    decLinePlot(sitename_mse, ["Decadal Average ", "MSE ", "for ", titlecase(site), " Under ", str(scenario)], False, calLength)
-    decLinePlot(sitename_pr, ["Decadal Average ",  "Precip ", "for ", titlecase(site), " Under ", str(scenario)], False, calLength)
-
-
+  #  multiContourPlot(sitename, sitename_pr, sitename_mse, 15, ["Decadal Average ", "MSE ", "for ", titlecase(site), " Under ", str(scenario)], calLength)
+  #  decLinePlot(sitename_mse, ["Decadal Average ", "MSE ", "for ", titlecase(site), " Under ", str(scenario)], False, calLength)
+  #  decLinePlot(sitename_pr, ["Decadal Average ",  "Precip ", "for ", titlecase(site), " Under ", str(scenario)], False, calLength)
+    dec2LinePlot(sitename_mse, ["Bidecadal Average ", "MSE ", "for \n ", titlecase(site), " Under ", str(scenario)], calLength, True, 11)
+    dec2LinePlot(sitename_pr, ["Bidecadal Average ",  "Precip ",  "for \n ", titlecase(site), " Under ", str(scenario)], calLength, False, 15)
 
 
 
@@ -539,10 +752,16 @@ gissexp_dict = {'giss4x':[giss_4x, "Abrupt 4x CO2 (GISS)"],
 mumbai_loc = "lon=73.01_lat=19.03"
 nagpur_loc = "lon=79.0882_lat=21.1458"
 kolkata_loc = "lon=88.3630400_lat=22.5626300" 
+lucknow_loc = "lon=80.946633_lat=26.845323"
+hyderabad_loc = "lon=78.479457_lat=17.379914"
+delhi_loc = "lon=77.200621_lat=28.627965" 
 
 location_dict = {'mumbai':mumbai_loc, 
       'nagpur':nagpur_loc,
-      'kolkata':kolkata_loc}
+      'kolkata':kolkata_loc,
+      'lucknow': lucknow_loc,
+      'hyderabad': hyderabad_loc,
+      'delhi': delhi_loc}
 
 
 
@@ -594,6 +813,8 @@ for i in z:
 
 
 
+
+
 # -- each experiment-location pair for Hadley models
 for exp in hadcombined_dict.keys():
   mse_PlottingAnalysis(hadcombined_dict[exp][0], location_dict, hadcombined_dict[exp][1], 360)
@@ -613,7 +834,7 @@ for exp in gissexp_dict.keys():
 prKolkata, mseKolkata = makeMSE(gissexp_dict['giss4x'][0], location_dict, gissexp_dict['giss4x'][1], 365)
 
 
-
+"""
 df1 = pd.DataFrame(pctile, columns = ['Cume Rainfall'])
 df1['DOY'] = range(364)
 df1.plot(kind = 'scatter', x = 'Cume Rainfall', y = 'DOY')
@@ -645,98 +866,17 @@ range(1,13)
 firstDay = [str(x)+"/"+str(1) for x in range(1,13)]
 doyVals = [int(datetime.strptime(x, '%m/%d').strftime('%j')) for x in firstDay]
 monthVals = [datetime.strptime(x, '%m/%d').strftime('%B') for x in firstDay] 
+""" 
+
+
+
 
 
 
 prKOLK = cdo.remapnn(kolkata_loc, input = prKolkata)
 
 
-def makeBoxPlot(pr_series, Years, ylevel):
-  # -- currently based on a single year, will have to develop it around 
-  # -- taking decadal average
-  # years: a list of (potentially) multiple year values 
-  # returns a boxplot object that will be included inside an MSE plot
-  # pr_series: CDO object of precipitation -- not making similar plots for any other series at the current moment   
-  # ylevel: manual input to fix boxplot inside another plot 
-  # currently setup as developing boxplot for single year -- will need to be modified in the future 
-
-  pr_nc = Dataset(pr_series)
-  precip = pr_nc.variables['pr'][:]
-  #prK_time = cdo.showdate(input = pr_series)[0].split()
-  pr_time = [datetime.strptime(x, '%Y-%m-%d') for x in cdo.showdate(input = pr_series)[0].split()]
-
-  ct = 0 
-  for y in Years:
-    # -- index values corresponding to beginning and end of calendar year 
-    first_val = [i.year == y for i in pr_time].index(True)
-    last_val = [i for i, j in enumerate(pr_time) if j.year == y][-1] 
-
-    # single year in vector format 
-    thisYear = np.squeeze(precip[first_val:last_val])
-
-    # -- statistics on annual total 
-    total = sum(thisYear)
-    pctile = np.cumsum(thisYear)/total 
-
-    # -- creating boxplot from these parameters
-    pct_val = [0.05, 0.25, 0.5, 0.75, 0.95]
-    pct_val_dict = {}
-
-    box_wider_big = np.array([-1,1,1,-1,-1])
-    box_wider_sm = np.array([-1,1])
-
-    for j in pct_val: 
-      pct = [i > j for i in pctile]
-      pct_val_dict[j] =  [l == True for l in pct].index(True)   
-
-    # -- compute and plot specifics of the year's distribution   
-    Mean=pct_val_dict[0.5]#mean
-    IQR=[pct_val_dict[0.25],pct_val_dict[0.75]] #inter quantile range
-    CL=[pct_val_dict[0.05],pct_val_dict[0.95]] #confidence limit
-    A=np.random.random(50)
-    D=plt.boxplot(A, vert = False) # a simple case with just one variable to boxplot
-    D['medians'][0].set_xdata(pct_val_dict[0.5])
-    # medians is 2x2
-    D['medians'][0]._xy[:,1]=ylevel[ct]+box_wider_sm
-   # D['medians']
-   # boxes is 5rowx2
-    D['boxes'][0]._xy[[0,1,4],0]=IQR[0]
-    D['boxes'][0]._xy[[2,3],0]=IQR[1]
-    D['boxes'][0]._xy[:,1]=ylevel[ct]+box_wider_big
-    print D['boxes'][0]._xy 
-    # whiskers is 2x2
-    D['whiskers'][0].set_xdata(np.array([IQR[0], CL[0]]))
-    D['whiskers'][0]._xy[:,1]=ylevel[ct]
-    D['whiskers'][1].set_xdata(np.array([IQR[1], CL[1]]))
-    D['whiskers'][1]._xy[:,1]=ylevel[ct]
-    print D['whiskers'][0]
-    # caps is 2x2
-    D['caps'][0].set_xdata(np.array([CL[0], CL[0]]))
-    D['caps'][0]._xy[:,1]=ylevel[ct]+box_wider_sm
-    D['caps'][1].set_xdata(np.array([CL[1], CL[1]]))
-    D['caps'][1]._xy[:,1]=ylevel[ct]+box_wider_sm
-
-
-
-
-    # -- add text of years to plot 
-    plt.text(pct_val_dict[0.5]-5,ylevel[ct]-2, str(y)+"-"+str(y+10), fontsize = 16)
-
-    ct += 1 # counter for identifying where the box plot should be vertically placed 
-    _=plt.xlim(np.array(CL)+[-0.1*np.ptp(CL), 0.1*np.ptp(CL)]) #reset the limit
-  
-  # -- modify x-axis labels 
-  middleOfMonth = [str(x)+"/"+str(15) for x in range(1,13)]
-  doyVals = [int(datetime.strptime(x, '%m/%d').strftime('%j')) for x in middleOfMonth]
-  monthVals = [datetime.strptime(x, '%m/%d').strftime('%B %d') for x in middleOfMonth] 
-
-  plt.xticks(doyVals, monthVals)
-  _=plt.xlim(np.array(CL)+[-0.1*np.ptp(CL), 0.1*np.ptp(CL)]) #reset the limit
-  _=plt.ylim(min(ylevel)-2.5, max(ylevel)+2.25)
-  return D 
-
-
-kol_bp = makeBoxPlot(prKOLK, [2900, 2960], [330,320])
+kol_bp = makeBoxPlot(prKOLK, [2900, 2950, 3000], [330,325,320])
 plt.show() 
 
 
@@ -835,12 +975,13 @@ def decLinePlotwBox(in_data, titleText, subset, calLength, pr_data, pr_year, ver
       f = 1   
      # ax.set_xlim(y_restrict)
 
+  ax = plt.subplot(1,1,1)   
   makeBoxPlot(pr_data, pr_year, verticalShift)   
   #plt.tight_layout()  
   fn = os.path.join(graphics_path, titleText[5], titleText[1] + "_" + titleText[3] + "_" + titleText[5] + "_Decadal_Plot.eps")
-  plt.savefig(fn, figsize=(8, 6), dpi = 1200, transparent = True, facecolor='w', edgecolor='k') 
-  plt.close()  
-  #plt.show()
+  #plt.savefig(fn, figsize=(8, 6), dpi = 1200, transparent = True, facecolor='w', edgecolor='k') 
+  #plt.close()  
+  plt.show()
 
 
 ### TESTING CODE ABOVE 
@@ -857,8 +998,8 @@ rcp85MSE.mse_pixel(mumbai_loc)
 # find 
 
 
-makeBoxPlot(rcp85PR_mumbai, 2015, 330)
-decLinePlotwBox(rcp85MSE.pixel, ["Decadal Average ",  "MSE ", "for ", "Mumbai", " Under ", "RCP 8.5"], False, 365, rcp85PR_mumbai, 2015, 330)
+makeBoxPlot(rcp85PR_mumbai, [2015], [330])
+decLinePlotwBox(rcp85MSE.pixel, ["Decadal Average ",  "MSE ", "for ", "Mumbai", " Under ", "RCP 8.5"], False, 365, rcp85PR_mumbai, [2030, 2050, 2070], [330,325,320])
 
 
 
