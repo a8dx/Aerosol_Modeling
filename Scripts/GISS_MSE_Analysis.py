@@ -390,6 +390,10 @@ def makeMSE(path, location, scenario, calLength):
 
 
 
+
+
+
+
 def mseDiff(in_data):
   return in_data
 
@@ -434,7 +438,8 @@ def bidecadeGen(in_data, calLength, subtractSummer):
     z1 = z1-z1_summer
     z2 = z2-z2_summer 
 
-  return z1, z2, years_range   
+  # -- y is needed as input to dec2linePlotwBox
+  return z1, z2, y, years_range   
 
 
 
@@ -443,68 +448,6 @@ def bidecadeGen(in_data, calLength, subtractSummer):
 
 
 
-
-
-
-def dec2LinePlotwBox(mse_data, rf_data, titleText, calLength, subtractSummer, windowLength):
-  """
-
-  'indata' is a single series in a CDO format, - either from a single pixel
-            or spatial average of multiple pixels  
-  either from a zonal average or individual location 
-  'titleText' is a character string that labels plot title 
-  calLength = either 360 or 365 depending on model used 
-
-
-  Restricts analysis to just 2 decades at the beginning and 2 at the end 
-  """ 
-
-  # -- compute average of first 20 years, last 20 years, and return the year ranges for labeling 
-  # -- and further computing with rainfall data 
-  zfirst, zsecond, years = bidecadeGen(mse_data, calLength, subtractSummer = True)
-
-  # -- labels for line plots 
-  lab1 = makeLab(years_range[0], 0)
-  lab2 = makeLab(years_range[1], 1)
-
-  z1_smooth = smooth(z1, windowLength)[0:len(z1)]
-  z2_smooth = smooth(z2, windowLength)[0:len(z2)]
-
-  # -- vary series markers 
-  lines = ["-","--","-.",":"]
-  linecycler = cycle(lines)
-
-  fig, ax  = plt.subplots() 
-  #box = ax.get_position()
-
-  x_pr_restrict = [150,275]  # portion kept in final plots 
-  x_restrict = [0,calLength]
-
-  #ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
-
-  #ax.plot(y[:,0], z1, next(linecycler), label = lab1)
-  #ax.plot(y[:,0], z2, next(linecycler), label = lab2)
-  ax.plot(y[:,0], z1_smooth, label = lab1)
-  ax.plot(y[:,0], z2_smooth, label = lab2)
-
-  ax.set_title(''.join(titleText))
-
-  #ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
-  ax.legend(loc = 'upper left')
-  labels = [item.get_text() for item in ax.get_xticklabels()]
-
-
-  # -- modify x-axis labels 
-  middleOfMonth = [str(x)+"/"+str(15) for x in range(1,13)]
-  doyVals = [int(datetime.strptime(x, '%m/%d').strftime('%j')) for x in middleOfMonth]
-  monthVals = [datetime.strptime(x, '%m/%d').strftime('%B %d') for x in middleOfMonth] 
-  plt.xticks(doyVals, monthVals)
-
-
-  fn = os.path.join(graphics_path, titleText[5], titleText[1] + "_" + titleText[3] + "_" + titleText[5] + "_BiDecadal_Plot.eps")
-  plt.savefig(fn, figsize=(8, 8), dpi = 600, transparent = True, facecolor='w', edgecolor='k') 
-  plt.close()  
-  #plt.show()
 
 
 """
@@ -828,10 +771,219 @@ for exp in gissexp_dict.keys():
 
 
 
+def dec2LinePlotwBox(mse_data, rf_data, titleText, calLength, subtractSummer, windowLength, v_offset):
+  """
+
+  'indata' is a single series in a CDO format, - either from a single pixel
+            or spatial average of multiple pixels  
+  either from a zonal average or individual location 
+  'titleText' is a character string that labels plot title 
+  calLength = either 360 or 365 depending on model used 
 
 
-# -- built as sample set to construct boxplot from 
+  Restricts analysis to just 2 decades at the beginning and 2 at the end 
+  """ 
+
+  # -- compute average of first 20 years, last 20 years, and return the year ranges for labeling 
+  # -- and further computing with rainfall data 
+  zfirst, zsecond, y, years = bidecadeGen(mse_data, calLength, subtractSummer = True)
+
+  # -- labels for line plots 
+  lab1 = makeLab(years, 0)
+  lab2 = makeLab(years, 1)
+
+  z1_smooth = smooth(zfirst, windowLength)[0:len(zfirst)]
+  z2_smooth = smooth(zsecond, windowLength)[0:len(zsecond)]
+
+  # -- vary series markers 
+  lines = ["-","--","-.",":"]
+  linecycler = cycle(lines)
+
+  fig, ax  = plt.subplots() 
+  #box = ax.get_position()
+
+  x_pr_restrict = [150,275]  # portion kept in final plots 
+  x_restrict = [0,calLength]
+
+  #ax.set_position([box.x0, box.y0, box.width * 0.8, box.height])
+
+  #ax.plot(y[:,0], z1, next(linecycler), label = lab1)
+  #ax.plot(y[:,0], z2, next(linecycler), label = lab2)
+  ax.plot(y[:,0], z1_smooth, label = lab1)
+  ax.plot(y[:,0], z2_smooth, label = lab2)
+
+  ax.set_title(''.join(titleText))
+
+  D = make2DecBoxPlot(rf_data, calLength, v_offset) 
+
+  #ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+  ax.legend(loc = 'upper left')
+  labels = [item.get_text() for item in ax.get_xticklabels()]
+
+
+  # -- modify x-axis labels 
+  middleOfMonth = [str(x)+"/"+str(15) for x in range(1,13)]
+  doyVals = [int(datetime.strptime(x, '%m/%d').strftime('%j')) for x in middleOfMonth]
+  monthVals = [datetime.strptime(x, '%m/%d').strftime('%B %d') for x in middleOfMonth] 
+  plt.xticks(doyVals, monthVals, rotation = 45)
+
+  
+
+  fn = os.path.join(graphics_path, titleText[5], titleText[1] + "_" + titleText[3] + "_" + titleText[5] + "_BiDecadal_Plot.eps")
+  plt.savefig(fn, figsize=(8, 8), dpi = 600, transparent = True, facecolor='w', edgecolor='k') 
+  plt.show() 
+  plt.close()  
+  #plt.show()
+
+
+
+
+def boxDimensions(in_data, offset, years):
+  """
+  Helper function to make2DecBoxPlot (or dec2LinePlotwBox) which identifies where the 
+  markers in a box-and-whiskers plot should be located.  Is iterated across the first
+  bidecade and the second bidecade separately.  
+  """
+
+  from collections import defaultdict
+
+    # -- want to include this atop the plot as well as in the height of the box-whiskers plot 
+  total = sum(in_data)
+  pctile = np.cumsum(in_data)/total
+  pct_val = [0.05, 0.25, 0.5, 0.75, 0.95]
+  pct_val_dict = {}
+  #pct_val_dict = defaultdict(list)  # initialize blank dict with ability to append, using collections
+
+  for j in pct_val: 
+    pct = [i > j for i in pctile]
+    pct_val_dict[j] = [l == True for l in pct].index(True)   
+    
+    print pct_val_dict 
+
+
+  fig, ax = plt.subplots() 
+  box_wider_sm = np.array([-1,1])
+  box_wider_big = np.array([-1,1,1,-1,-1])
+
+  Mean=pct_val_dict[0.5]#mean
+  IQR=[pct_val_dict[0.25],pct_val_dict[0.75]] #inter quantile range
+  CL=[pct_val_dict[0.05],pct_val_dict[0.95]] #confidence limit
+  A=np.random.random(50)
+  #D=ax.boxplot(A, vert = False) # a simple case with just one variable to boxplot
+  D=plt.boxplot(A, vert = False) # a simple case with just one variable to boxplot
+
+  D['medians'][0].set_xdata(pct_val_dict[0.5])
+  # medians is 2x2
+  D['medians'][0]._xy[:,1]=offset+ box_wider_sm
+  # D['medians']
+  # boxes is 5rowx2
+  D['boxes'][0]._xy[[0,1,4],0]=IQR[0]
+  D['boxes'][0]._xy[[2,3],0]=IQR[1]
+  D['boxes'][0]._xy[:,1]=offset +box_wider_big
+  D['boxes'][0]._xy 
+  # whiskers is 2x2
+  D['whiskers'][0].set_xdata(np.array([IQR[0], CL[0]]))
+  D['whiskers'][0]._xy[:,1]=offset
+  D['whiskers'][1].set_xdata(np.array([IQR[1], CL[1]]))
+  D['whiskers'][1]._xy[:,1]=offset
+  D['whiskers'][0]
+  # caps is 2x2
+  D['caps'][0].set_xdata(np.array([CL[0], CL[0]]))
+  D['caps'][0]._xy[:,1]=offset+ box_wider_sm
+  D['caps'][1].set_xdata(np.array([CL[1], CL[1]]))
+  D['caps'][1]._xy[:,1]=offset+ box_wider_sm
+
+
+
+  return D, CL
+
+
+
+
+def make2DecBoxPlot(rf_data, calLength, v_offset):
+  """
+  rf_data : cdo-object with averaged rainfalls (??) 
+
+
+  v_offset: a 1x2 list of vertical measures to ensure the two bidecadal series don't overlap when placed in the line plots 
+  # -- currently based on a single year, will have to develop it around 
+  # -- taking decadal average
+
+  # returns a boxplot object that will be included inside an MSE plot
+
+
+  """
+  # -- to append multiple items to dictionary keys 
+  from collections import defaultdict
+
+  # -- rf1, rf2 are already averaged across 20-year periods 
+  rf1, rf2, t, years = bidecadeGen(rf_data, calLength, subtractSummer = False)
+
+
+# -- span across both first series and second series 
+  D, CL1 = boxDimensions(rf1, v_offset[0], years[0])
+  D, CL2 = boxDimensions(rf2, v_offset[1], years[1])
+
+  ax.text(D['boxes'][0]._xy[0,0],v_offset[0], str(years[0][0])+"-"+str(years[0][-1]), fontsize = 16)
+  ax.text(D['boxes'][0]._xy[0,0],v_offset[1], str(years[1][0])+"-"+str(years[1][-1]), fontsize = 16)
+
+  #_=plt.xlim(np.array(CL1)+[-0.1*np.ptp(CL1), 0.1*np.ptp(CL1)]) #reset the limit
+
+  # -- modify x-axis labels 
+  middleOfMonth = [str(x)+"/"+str(15) for x in range(1,13)]
+  doyVals = [int(datetime.strptime(x, '%m/%d').strftime('%j')) for x in middleOfMonth]
+  monthVals = [datetime.strptime(x, '%m/%d').strftime('%B %d') for x in middleOfMonth] 
+
+  plt.xticks(doyVals, monthVals, rotation = 45)
+
+  # fiddled with this, from list to single real
+  #_=plt.ylim(v_offset[0]-2.5, v_offset[0]+2.25)
+  return D
+
+
+
+
+# -- built as sample set to construct boxplot from and ensure that other functions are acting appropriately
+#
+#
+#
+
 prKolkata, mseKolkata = makeMSE(gissexp_dict['giss4x'][0], location_dict, gissexp_dict['giss4x'][1], 365)
+prKOLK = cdo.remapnn(kolkata_loc, input = prKolkata)
+
+# -- calc MSE 
+mseKolkata.mse_pixel(kolkata_loc)
+mseKOLK = mseKolkata.pixel 
+
+site = "Kolkata"
+scenario = "Historical (GISS E2-R)"
+dec2LinePlotwBox(mseKOLK, prKOLK, ["Bidecadal Average ",  "Precip ",  "for \n ", titlecase(site), " Under ", str(scenario)], 365, True, 11, -40)
+
+
+
+a,b,c,d = bidecadeGen(prKOLK, 365, subtractSummer = False)
+
+boxDimensions(a, -30, d[0])
+plt.show() 
+
+
+ad = make2DecBoxPlot(prKOLK, 365, [0,1])
+plt.show() 
+
+dec2LinePlotwBox(mseKOLK, prKOLK, ["Bidecadal Average ",  "Precip ",  "for \n ", titlecase(site), " Under ", str(scenario)], 365, True, 11, [-30,-40])
+
+kol_bp = makeBoxPlot(prKOLK, [2900, 2950, 3000], [330,325,320])
+plt.show() 
+
+
+
+#
+#
+#
+#
+#
+#
+
 
 
 """
@@ -871,13 +1023,6 @@ monthVals = [datetime.strptime(x, '%m/%d').strftime('%B') for x in firstDay]
 
 
 
-
-
-prKOLK = cdo.remapnn(kolkata_loc, input = prKolkata)
-
-
-kol_bp = makeBoxPlot(prKOLK, [2900, 2950, 3000], [330,325,320])
-plt.show() 
 
 
 
@@ -994,15 +1139,108 @@ rcp85PR_mumbai = cdo.remapnn(mumbai_loc, input = rcp85PR)
 rcp85MSE_mumbai = cdo.remapnn(mumbai_loc, input = rcp85MSE)
 
 rcp85MSE.mse_pixel(mumbai_loc)
-
+rcp85M = rcp85MSE.pixel
 # find 
 
 
+
 makeBoxPlot(rcp85PR_mumbai, [2015], [330])
-decLinePlotwBox(rcp85MSE.pixel, ["Decadal Average ",  "MSE ", "for ", "Mumbai", " Under ", "RCP 8.5"], False, 365, rcp85PR_mumbai, [2030, 2050, 2070], [330,325,320])
+plt.show() 
 
 
 
+decLinePlotwBox(rcp85M, ["Decadal Average ",  "MSE ", "for ", "Mumbai", " Under ", "RCP 8.5"], False, 365, rcp85PR_mumbai, [2030, 2050, 2070], [330,325,320])
+
+
+
+
+
+
+
+# -- this below has been repasted from Sourcetree
+def makeBoxPlot(pr_series, Years, ylevel):
+  # -- currently based on a single year, will have to develop it around 
+  # -- taking decadal average
+  # years: a list of (potentially) multiple year values 
+  # returns a boxplot object that will be included inside an MSE plot
+  # pr_series: CDO object of precipitation -- not making similar plots for any other series at the current moment   
+  # ylevel: manual input to fix boxplot inside another plot 
+  # currently setup as developing boxplot for single year -- will need to be modified in the future 
+
+  pr_nc = Dataset(pr_series)
+  precip = pr_nc.variables['pr'][:]
+  #prK_time = cdo.showdate(input = pr_series)[0].split()
+  pr_time = [datetime.strptime(x, '%Y-%m-%d') for x in cdo.showdate(input = pr_series)[0].split()]
+
+  ct = 0 
+  for y in Years:
+    # -- index values corresponding to beginning and end of calendar year 
+    first_val = [i.year == y for i in pr_time].index(True)
+    last_val = [i for i, j in enumerate(pr_time) if j.year == y][-1] 
+
+    # single year in vector format 
+    thisYear = np.squeeze(precip[first_val:last_val])
+
+    # -- statistics on annual total 
+    total = sum(thisYear)
+    pctile = np.cumsum(thisYear)/total 
+
+    # -- creating boxplot from these parameters
+    pct_val = [0.05, 0.25, 0.5, 0.75, 0.95]
+    pct_val_dict = {}
+
+    box_wider_big = np.array([-1,1,1,-1,-1])
+    box_wider_sm = np.array([-1,1])
+
+    for j in pct_val: 
+      pct = [i > j for i in pctile]
+      pct_val_dict[j] =  [l == True for l in pct].index(True)   
+
+    # -- compute and plot specifics of the year's distribution   
+    Mean=pct_val_dict[0.5]#mean
+    IQR=[pct_val_dict[0.25],pct_val_dict[0.75]] #inter quantile range
+    CL=[pct_val_dict[0.05],pct_val_dict[0.95]] #confidence limit
+    A=np.random.random(50)
+    D=plt.boxplot(A, vert = False) # a simple case with just one variable to boxplot
+    D['medians'][0].set_xdata(pct_val_dict[0.5])
+    # medians is 2x2
+    D['medians'][0]._xy[:,1]=ylevel[ct]+box_wider_sm
+   # D['medians']
+   # boxes is 5rowx2
+    D['boxes'][0]._xy[[0,1,4],0]=IQR[0]
+    D['boxes'][0]._xy[[2,3],0]=IQR[1]
+    D['boxes'][0]._xy[:,1]=ylevel[ct]+box_wider_big
+    print D['boxes'][0]._xy 
+    # whiskers is 2x2
+    D['whiskers'][0].set_xdata(np.array([IQR[0], CL[0]]))
+    D['whiskers'][0]._xy[:,1]=ylevel[ct]
+    D['whiskers'][1].set_xdata(np.array([IQR[1], CL[1]]))
+    D['whiskers'][1]._xy[:,1]=ylevel[ct]
+    print D['whiskers'][0]
+    # caps is 2x2
+    D['caps'][0].set_xdata(np.array([CL[0], CL[0]]))
+    D['caps'][0]._xy[:,1]=ylevel[ct]+box_wider_sm
+    D['caps'][1].set_xdata(np.array([CL[1], CL[1]]))
+    D['caps'][1]._xy[:,1]=ylevel[ct]+box_wider_sm
+
+
+
+
+    # -- add text of years to plot 
+    plt.text(pct_val_dict[0.5]-5,ylevel[ct]-2, str(y)+"-"+str(y+10), fontsize = 16)
+
+    ct += 1 # counter for identifying where the box plot should be vertically placed 
+    _=plt.xlim(np.array(CL)+[-0.1*np.ptp(CL), 0.1*np.ptp(CL)]) #reset the limit
+  
+  # -- modify x-axis labels 
+  middleOfMonth = [str(x)+"/"+str(15) for x in range(1,13)]
+  doyVals = [int(datetime.strptime(x, '%m/%d').strftime('%j')) for x in middleOfMonth]
+  monthVals = [datetime.strptime(x, '%m/%d').strftime('%B %d') for x in middleOfMonth] 
+
+  plt.xticks(doyVals, monthVals)
+  _=plt.xlim(np.array(CL)+[-0.1*np.ptp(CL), 0.1*np.ptp(CL)]) #reset the limit
+  _=plt.ylim(min(ylevel)-2.5, max(ylevel)+2.25)
+  return D 
 
 
 
